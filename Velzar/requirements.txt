@@ -1,0 +1,14 @@
+# Núcleo del Bot (API de Telegram)
+python-telegram-bot[job-queue]
+
+# Manejo de Entorno y Seguridad (.env y encriptación)
+python-dotenv
+cryptography
+
+# Conexiones a Venice.AI (Peticiones web rápidas)
+requests
+aiohttp
+openai
+
+# Base de datos (SQLite simplificado)
+aiosqlite
