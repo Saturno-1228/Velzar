@@ -236,3 +236,73 @@ async def unlock_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.delete()
         msg = await update.message.reply_text("🔓 **Lockdown desactivado.**", parse_mode="Markdown")
         context.job_queue.run_once(lambda ctx: ctx.bot.delete_message(update.effective_chat.id, msg.message_id), 5)
+
+async def warn_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await is_bot_admin(update, context): return
+    if not update.message.reply_to_message:
+        msg = await update.message.reply_text("⚠️ Responde al mensaje del usuario que deseas advertir.")
+        context.job_queue.run_once(lambda ctx: ctx.bot.delete_message(update.effective_chat.id, msg.message_id), 5)
+        await update.message.delete()
+        return
+
+    user = update.message.reply_to_message.from_user
+    reason = " ".join(context.args) or "Comportamiento inadecuado"
+
+    await update.message.delete()
+    await context.bot.send_message(
+        update.effective_chat.id,
+        f"⚠️ **ADVERTENCIA**\n👤 Usuario: {user.mention_markdown()}\n📝 Razón: {reason}\n\n_Próxima infracción resultará en sanción._",
+        parse_mode="Markdown"
+    )
+
+async def info_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await is_bot_admin(update, context): return
+
+    target = update.effective_user
+    if update.message.reply_to_message:
+        target = update.message.reply_to_message.from_user
+
+    chat = update.effective_chat
+
+    info_text = (
+        f"👤 **USER INFO**\n"
+        f"• ID: `{target.id}`\n"
+        f"• Name: {target.full_name}\n"
+        f"• Username: @{target.username if target.username else 'N/A'}\n"
+        f"• Bot: {'Yes' if target.is_bot else 'No'}\n\n"
+        f"📍 **CHAT INFO**\n"
+        f"• ID: `{chat.id}`\n"
+        f"• Title: {chat.title}\n"
+        f"• Type: {chat.type}"
+    )
+
+    await update.message.reply_text(info_text, parse_mode="Markdown")
+
+async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not await is_bot_admin(update, context): return
+
+    from core.handlers.menu_handler import security
+    chat_id = update.effective_chat.id
+
+    # Check bot permissions
+    try:
+        me = await context.bot.get_chat_member(chat_id, context.bot.id)
+        is_admin = me.status == "administrator"
+        can_ban = me.can_restrict_members
+        can_delete = me.can_delete_messages
+    except:
+        is_admin = False
+        can_ban = False
+        can_delete = False
+
+    status_msg = (
+        f"🛡️ **SECURITY STATUS**\n"
+        f"━━━━━━━━━━━━━━━━━━\n"
+        f"🔒 **Lockdown:** `{'ACTIVE' if security.lockdown_mode else 'INACTIVE'}`\n"
+        f"👮 **Bot Admin:** `{'YES' if is_admin else 'NO'}`\n"
+        f"🔨 **Can Ban:** `{'YES' if can_ban else 'NO'}`\n"
+        f"🗑️ **Can Delete:** `{'YES' if can_delete else 'NO'}`\n"
+        f"🤖 **AI Engine:** `Active`"
+    )
+
+    await update.message.reply_text(status_msg, parse_mode="Markdown")
