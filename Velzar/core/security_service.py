@@ -7,6 +7,7 @@ from telegram import Update, ChatPermissions
 from telegram.ext import ContextTypes
 from config.settings import ADMIN_USER_ID, LOG_CHANNEL_ID
 from services.venice_service import VeniceService
+from services.database_service import add_ban_log
 
 logger = logging.getLogger(__name__)
 
@@ -164,6 +165,7 @@ class SecurityService:
         prompt = [
             {"role": "system", "content": (
                 "Eres un sistema de moderación de seguridad para Telegram. "
+                "Tu nombre es Velzar. "
                 "Analiza el siguiente mensaje que ha sido marcado por palabras clave sospechosas. "
                 "Determina si es una violación real de seguridad/normas. "
                 "Categorías: 'racism', 'illegal', 'harassment', 'spam', 'safe' (falso positivo). "
@@ -202,6 +204,9 @@ class SecurityService:
         try:
             if action == "ban":
                 await context.bot.ban_chat_member(chat_id, user_id)
+                # Log Ban en DB (AI Generated)
+                # Como security_service no tiene admin_id humano, usamos 0 o un ID de bot
+                await add_ban_log(user_id, chat_id, reason, context.bot.id)
                 await update.message.reply_text(msg + "\n🚫 **Usuario Expulsado.**", parse_mode="Markdown")
 
             elif action == "mute":
