@@ -5,7 +5,7 @@ import re
 import datetime
 from telegram import Update, ChatPermissions
 from telegram.ext import ContextTypes
-from config.settings import ADMIN_USER_ID
+from config.settings import ADMIN_USER_ID, LOG_CHANNEL_ID
 from services.venice_service import VeniceService
 
 logger = logging.getLogger(__name__)
@@ -39,6 +39,10 @@ class SecurityService:
         self.join_log = []          # [timestamp, ...]
         self.lockdown_mode = False
 
+        # Cache de usuarios seguros para evitar llamadas excesivas a la IA
+        # {user_id: {"score": int, "last_check": timestamp}}
+        self.user_trust_score = {}
+
         # Configuración Anti-Raid
         self.MAX_MSGS_PER_SEC = 5   # Max 5 mensajes en 3 segundos
         self.RAID_JOIN_THRESHOLD = 5 # 5 usuarios en 10 segundos
@@ -66,11 +70,16 @@ class SecurityService:
 
         # 3. Filtro de Palabras + Juez IA
         if self._check_keywords(text):
-             # Si contiene palabras de alerta, enviamos a la IA para juicio contextual
-             decision = await self._ai_judge(text)
+             # Si el usuario tiene alto Trust Score, podemos ser más laxos, pero por ahora revisamos todo lo sospechoso.
+             # Solo llamamos a la IA si hay keywords, lo cual ya filtra el 99% de mensajes normales.
+             decision = await self._ai_judge(text, user.id)
+
              if decision['action'] != 'none':
                  await self._punish_user(update, context, decision['action'], decision['reason'])
                  return False
+             else:
+                 # Si la IA dice que es seguro (falso positivo), aumentamos confianza
+                 self._increase_trust(user.id)
 
         return True
 
@@ -128,8 +137,11 @@ class SecurityService:
                 return True
         return False
 
-    async def _ai_judge(self, text):
-        """Usa Venice para juzgar la gravedad del mensaje marcado"""
+    async def _ai_judge(self, text, user_id):
+        """Usa Venice para juzgar la gravedad del mensaje marcado.
+           Incluye optimización: Si el usuario es de mucha confianza,
+           podríamos saltar esto, pero por seguridad extrema lo mantenemos."""
+
         prompt = [
             {"role": "system", "content": (
                 "Eres un sistema de moderación de seguridad para Telegram. "
@@ -151,10 +163,20 @@ class SecurityService:
             logger.error(f"Error en AI Judge: {e}")
             return {"action": "none", "reason": "Error de análisis"}
 
+    def _increase_trust(self, user_id):
+        if user_id not in self.user_trust_score:
+            self.user_trust_score[user_id] = {"score": 0, "last_check": 0}
+        self.user_trust_score[user_id]["score"] += 1
+        self.user_trust_score[user_id]["last_check"] = time.time()
+
     async def _punish_user(self, update, context, action, reason):
         chat_id = update.effective_chat.id
         user_id = update.effective_user.id
         username = update.effective_user.username or user_id
+
+        # Reset trust score on punishment
+        if user_id in self.user_trust_score:
+             self.user_trust_score[user_id]["score"] = 0
 
         msg = f"🛡️ **SISTEMA DE SEGURIDAD VELZAR**\n👤 Usuario: `{username}`\n⚖️ Sentencia: **{action.upper()}**\n📝 Razón: {reason}"
 
@@ -176,6 +198,18 @@ class SecurityService:
             # Siempre intentamos borrar el mensaje ofensivo
             if action in ["ban", "mute"]:
                 await update.message.delete()
+
+            # --- LOG AUDITORÍA ---
+            if LOG_CHANNEL_ID:
+                try:
+                    log_msg = (f"📝 **AUDIT LOG**\n"
+                               f"• Chat: `{update.effective_chat.title}`\n"
+                               f"• User: `{username}` ({user_id})\n"
+                               f"• Action: {action.upper()}\n"
+                               f"• Reason: {reason}")
+                    await context.bot.send_message(chat_id=LOG_CHANNEL_ID, text=log_msg, parse_mode="Markdown")
+                except Exception as ex:
+                    logger.error(f"Error enviando log: {ex}")
 
         except Exception as e:
             logger.error(f"No se pudo ejecutar castigo: {e}")

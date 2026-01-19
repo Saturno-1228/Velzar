@@ -7,6 +7,7 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./velzar.db")
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 ADMIN_USER_ID = int(os.getenv("ADMIN_USER_ID", "0"))
+LOG_CHANNEL_ID = os.getenv("LOG_CHANNEL_ID") # Nuevo: Canal para reportes de seguridad
 
 # Configuración Venice AI
 VENICE_API_KEY = os.getenv("VENICE_API_KEY")

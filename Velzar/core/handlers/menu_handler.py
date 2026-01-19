@@ -7,6 +7,7 @@ from services.database_service import get_or_create_user, check_credits, consume
 from services.venice_service import VeniceService
 from core.security_service import SecurityService
 from utils.helpers import save_image_to_disk, download_telegram_file
+from core.handlers.captcha_handler import new_member_captcha
 from config.settings import BOT_TOKEN, ADMIN_USER_ID
 
 # --- 🛡️ SEGURIDAD ---
@@ -71,10 +72,12 @@ async def start_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"━━━━━━━━━━━━━━━━━━━━━━\n"
         f"🔻 **CONTROL INTERFACE:**"
     )
+    bot_username = context.bot.username
     keyboard = [
         [InlineKeyboardButton("🎨 GENERAR IMAGEN", callback_data="gen_menu_categorias")],
         [InlineKeyboardButton("📥 EDITAR IMAGEN", callback_data="upload_info")],
         [InlineKeyboardButton("💬 CHAT CON VELZAR", callback_data="toggle_chat_mode")],
+        [InlineKeyboardButton("🛡️ AÑADIR A GRUPO", url=f"https://t.me/{bot_username}?startgroup=true")],
         [InlineKeyboardButton("👤 PERFIL", callback_data="profile_info")]
     ]
     if update.message: await update.message.reply_text(dashboard, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
@@ -211,5 +214,10 @@ async def handle_incoming_photo(update: Update, context: ContextTypes.DEFAULT_TY
         await context.bot.edit_message_text(chat_id=user.id, message_id=msg.message_id, text="**EDICIÓN (Img2Img):** Seleccione protocolo.", reply_markup=InlineKeyboardMarkup(kb), parse_mode="Markdown")
 
 async def handle_new_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Wrapper para Anti-Raid check"""
+    """Wrapper para Anti-Raid + Captcha"""
+    # 1. Anti-Raid Check
     await security.check_join(update, context)
+
+    # 2. Captcha Flow (si no estamos en lockdown)
+    if not security.lockdown_mode:
+        await new_member_captcha(update, context)
