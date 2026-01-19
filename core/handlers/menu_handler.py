@@ -73,7 +73,8 @@ async def start_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"━━━━━━━━━━━━━━━━━━━━━━\n"
         f"🔻 **CONTROL INTERFACE:**"
     )
-    bot_username = context.bot.username
+    # Intentar obtener username cacheado o del bot
+    bot_username = context.bot_data.get("username") or context.bot.username
 
     # Lógica diferenciada: Privado vs Grupo
     if update.effective_chat.type == "private":

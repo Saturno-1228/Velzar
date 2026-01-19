@@ -25,7 +25,12 @@ async def post_init(application: Application):
     logger.info("⚙️ Iniciando servicios de Velzar...")
     await init_db()
     await reload_authorized_admins()
-    logger.info("✅ Base de datos y Admins cargados.")
+
+    # Pre-fetch bot info for deep links
+    me = await application.bot.get_me()
+    application.bot_data["username"] = me.username
+
+    logger.info(f"✅ Base de datos cargada. Identidad confirmada: @{me.username}")
 
 def main():
     if not BOT_TOKEN: return
