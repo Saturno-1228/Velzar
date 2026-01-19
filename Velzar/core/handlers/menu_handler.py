@@ -73,15 +73,21 @@ async def start_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🔻 **CONTROL INTERFACE:**"
     )
     bot_username = context.bot.username
-    keyboard = [
-        [InlineKeyboardButton("🎨 GENERAR IMAGEN", callback_data="gen_menu_categorias")],
-        [InlineKeyboardButton("📥 EDITAR IMAGEN", callback_data="upload_info")],
-        [InlineKeyboardButton("💬 CHAT CON VELZAR", callback_data="toggle_chat_mode")],
-        [InlineKeyboardButton("🛡️ AÑADIR A GRUPO", url=f"https://t.me/{bot_username}?startgroup=true")],
-        [InlineKeyboardButton("👤 PERFIL", callback_data="profile_info")]
-    ]
-    if update.message: await update.message.reply_text(dashboard, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
-    else: await update.callback_query.edit_message_text(dashboard, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+
+    # Lógica diferenciada: Privado vs Grupo
+    if update.effective_chat.type == "private":
+        keyboard = [
+            [InlineKeyboardButton("🎨 GENERAR IMAGEN", callback_data="gen_menu_categorias")],
+            [InlineKeyboardButton("📥 EDITAR IMAGEN", callback_data="upload_info")],
+            [InlineKeyboardButton("💬 CHAT CON VELZAR", callback_data="toggle_chat_mode")],
+            [InlineKeyboardButton("🛡️ AÑADIR A GRUPO", url=f"https://t.me/{bot_username}?startgroup=true&admin=change_info+restrict_members+delete_messages+invite_users+pin_messages+manage_video_chats")],
+            [InlineKeyboardButton("👤 PERFIL", callback_data="profile_info")]
+        ]
+        if update.message: await update.message.reply_text(dashboard, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+        else: await update.callback_query.edit_message_text(dashboard, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+    else:
+        # En grupo: Mensaje minimalista profesional
+        await update.message.reply_text("🛡️ **Velzar Security Systems** | `Active & Monitoring`", parse_mode="Markdown")
 
 # --- 💬 LÓGICA DE CHAT ---
 async def toggle_chat_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -90,7 +96,13 @@ async def toggle_chat_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['chat_mode'] = True
     context.user_data['waiting_prompt'] = False
 
-    # Mensaje de bienvenida limpio
+    # En grupos, evitamos spam si ya está activo
+    if update.effective_chat.type != "private":
+        if query: await query.answer("Protocolo de chat activado.")
+        # No enviamos mensaje nuevo en grupos para no saturar
+        return
+
+    # Mensaje de bienvenida limpio (Solo Privado)
     msg = "💬 **ENLACE VELZAR LLM ACTIVO**\n"
     if user.id == ADMIN_USER_ID:
         msg += "🌹 *A la espera de sus órdenes, Amo Rubén.*"
