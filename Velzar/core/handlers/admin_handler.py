@@ -2,6 +2,9 @@ from telegram import Update, ChatPermissions
 from telegram.ext import ContextTypes
 import datetime
 
+# --- IMPORT SECURITY INSTANCE ---
+from core.handlers.menu_handler import security
+
 # Helper para verificar admin
 async def is_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
     user = update.effective_user
@@ -91,3 +94,14 @@ async def purge_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     except Exception as e:
         await update.message.reply_text(f"❌ Uso: `/purge [número]`")
+
+async def unlock_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Fuerza el desbloqueo del modo Lockdown"""
+    if not await is_admin(update, context): return
+
+    if security.lockdown_mode:
+        security.lockdown_mode = False
+        security.lockdown_end_time = 0
+        await update.message.reply_text("🔓 **Modo Lockdown desactivado manualmente.**", parse_mode="Markdown")
+    else:
+        await update.message.reply_text("ℹ️ El sistema no está en Lockdown actualmente.")

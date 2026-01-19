@@ -8,7 +8,7 @@ from core.handlers.menu_handler import (
     handle_text_message, toggle_chat_mode, handle_new_member
 )
 from core.handlers.captcha_handler import verify_callback
-from core.handlers.admin_handler import ban_command, mute_command, unmute_command, purge_command
+from core.handlers.admin_handler import ban_command, mute_command, unmute_command, purge_command, unlock_command
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -35,6 +35,7 @@ def main():
     app.add_handler(CommandHandler("mute", mute_command))
     app.add_handler(CommandHandler("unmute", unmute_command))
     app.add_handler(CommandHandler("purge", purge_command))
+    app.add_handler(CommandHandler("unlock", unlock_command))
 
     # Mensajes
     app.add_handler(MessageHandler(filters.PHOTO, handle_incoming_photo))

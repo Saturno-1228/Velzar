@@ -38,14 +38,17 @@ class SecurityService:
         self.user_message_log = {}  # {user_id: [timestamp, ...]}
         self.join_log = []          # [timestamp, ...]
         self.lockdown_mode = False
+        self.lockdown_end_time = 0  # Timestamp para fin de lockdown
 
         # Cache de usuarios seguros para evitar llamadas excesivas a la IA
         # {user_id: {"score": int, "last_check": timestamp}}
         self.user_trust_score = {}
+        self.TRUST_THRESHOLD = 5 # Mensajes seguros consecutivos para ganar confianza
 
         # Configuración Anti-Raid
         self.MAX_MSGS_PER_SEC = 5   # Max 5 mensajes en 3 segundos
         self.RAID_JOIN_THRESHOLD = 5 # 5 usuarios en 10 segundos
+        self.LOCKDOWN_DURATION = 300 # 5 minutos
 
     async def check_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
         """
@@ -70,8 +73,18 @@ class SecurityService:
 
         # 3. Filtro de Palabras + Juez IA
         if self._check_keywords(text):
-             # Si el usuario tiene alto Trust Score, podemos ser más laxos, pero por ahora revisamos todo lo sospechoso.
-             # Solo llamamos a la IA si hay keywords, lo cual ya filtra el 99% de mensajes normales.
+             # Optimización por Trust Score: Si el usuario es confiable, saltamos el chequeo costoso de IA
+             # pero mantenemos la alerta básica. (Podríamos ser más laxos, pero por seguridad, chequeamos igual si es muy grave).
+             # En este diseño, si tiene trust > threshold, asumimos que es un falso positivo probable o contexto seguro.
+             trust = self.user_trust_score.get(user.id, {}).get("score", 0)
+
+             if trust >= self.TRUST_THRESHOLD:
+                 # Usuario confiable: Solo reseteamos score si es algo MUY obvio (no implementado aquí)
+                 # o simplemente lo dejamos pasar aumentando log.
+                 logger.info(f"Trust Bypass para usuario {user.id} (Score: {trust})")
+                 return True
+
+             # Si no es confiable, llamamos a la IA
              decision = await self._ai_judge(text, user.id)
 
              if decision['action'] != 'none':
@@ -86,6 +99,15 @@ class SecurityService:
     async def check_join(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Monitor de Anti-Raid para nuevos miembros"""
         now = time.time()
+
+        # Auto-Reset Lockdown si ha pasado el tiempo
+        if self.lockdown_mode and now > self.lockdown_end_time:
+            self.lockdown_mode = False
+            await context.bot.send_message(
+                chat_id=update.effective_chat.id,
+                text="✅ **SEGURIDAD:** Modo Lockdown desactivado automáticamente."
+            )
+
         self.join_log.append(now)
         # Limpiar logs viejos (>10s)
         self.join_log = [t for t in self.join_log if now - t < 10]
@@ -93,11 +115,11 @@ class SecurityService:
         if len(self.join_log) > self.RAID_JOIN_THRESHOLD:
             if not self.lockdown_mode:
                 self.lockdown_mode = True
+                self.lockdown_end_time = now + self.LOCKDOWN_DURATION
                 await context.bot.send_message(
                     chat_id=update.effective_chat.id,
-                    text="🚨 **ALERTA DE RAID:** Múltiples ingresos detectados. Activando MODO LOCKDOWN."
+                    text=f"🚨 **ALERTA DE RAID:** Activando MODO LOCKDOWN por {self.LOCKDOWN_DURATION//60} minutos."
                 )
-                # Aquí se podría cerrar el grupo o mutear a todos los nuevos
 
             # Mute automático al nuevo si estamos en raid
             for member in update.message.new_chat_members:
@@ -138,10 +160,7 @@ class SecurityService:
         return False
 
     async def _ai_judge(self, text, user_id):
-        """Usa Venice para juzgar la gravedad del mensaje marcado.
-           Incluye optimización: Si el usuario es de mucha confianza,
-           podríamos saltar esto, pero por seguridad extrema lo mantenemos."""
-
+        """Usa Venice para juzgar la gravedad del mensaje marcado."""
         prompt = [
             {"role": "system", "content": (
                 "Eres un sistema de moderación de seguridad para Telegram. "
