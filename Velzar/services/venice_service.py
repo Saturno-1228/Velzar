@@ -2,7 +2,10 @@ import aiohttp
 import base64
 import logging
 import asyncio
-from config.settings import VENICE_API_KEY, VENICE_API_BASE, VENICE_IMG_MODEL, VENICE_EDIT_MODEL, VENICE_TEXT_MODEL
+from config.settings import (
+    VENICE_API_KEY, VENICE_API_BASE, VENICE_IMG_MODEL,
+    VENICE_EDIT_MODEL, VENICE_TEXT_MODEL, VENICE_FALLBACK_MODEL
+)
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +19,7 @@ class VeniceService:
     async def _post_request(self, endpoint, payload):
         url = f"{VENICE_API_BASE}/{endpoint}"
         timeout = aiohttp.ClientTimeout(total=300)
-        
+
         async with aiohttp.ClientSession(timeout=timeout) as session:
             try:
                 async with session.post(url, json=payload, headers=self.headers) as response:
@@ -34,29 +37,36 @@ class VeniceService:
                 logger.error(f"Excepción: {e}")
                 return None
 
-    # --- CHAT CON DEEPSEEK (TEXT-TO-TEXT) ---
-    async def generate_chat_reply(self, messages, max_tokens=1000):
-        """Conversa usando DeepSeek V3.2"""
+    # --- CHAT CON FALLBACK (Self-Repair) ---
+    async def generate_chat_reply(self, messages, max_tokens=1000, model=VENICE_TEXT_MODEL):
+        """Conversa usando el modelo principal, con autoreparación (fallback) si falla."""
         payload = {
-            "model": VENICE_TEXT_MODEL, # deepseek-v3.2
+            "model": model,
             "messages": messages,
             "max_tokens": max_tokens,
-            "temperature": 0.7, # Creatividad balanceada
+            "temperature": 0.7,
             "top_p": 0.9
         }
-        
-        logger.info(f"💬 Chatting with {VENICE_TEXT_MODEL}...")
+
+        logger.info(f"💬 Intentando chat con {model}...")
         data = await self._post_request("chat/completions", payload)
-        
+
+        # Validación de éxito
         if isinstance(data, dict) and "choices" in data:
             return data["choices"][0]["message"]["content"]
+
+        # Lógica de Fallback (Autoreparación)
+        if model == VENICE_TEXT_MODEL:
+            logger.warning(f"⚠️ Fallo en modelo principal ({model}). Iniciando protocolo de autoreparación con {VENICE_FALLBACK_MODEL}...")
+            return await self.generate_chat_reply(messages, max_tokens, model=VENICE_FALLBACK_MODEL)
+
         return None
 
     # --- GENERACIÓN DE IMÁGENES ---
     async def generate_image(self, prompt, model_id=None, negative_prompt="low quality, bad anatomy"):
         modelo_a_usar = model_id if model_id else VENICE_IMG_MODEL
         payload = {
-            "model": modelo_a_usar, 
+            "model": modelo_a_usar,
             "prompt": prompt,
             "negative_prompt": negative_prompt,
             "width": 1024, "height": 1024, "steps": 30, "cfg_scale": 7.5,
@@ -93,8 +103,8 @@ class VeniceService:
         if isinstance(data, dict) and "images" in data: return base64.b64decode(data["images"][0])
         elif isinstance(data, dict) and "error" not in data: return None
 
-        # Intento 2: Fallback
-        logger.warning("⚠️ Fallback a modo básico...")
+        # Intento 2: Fallback Interno de Edición
+        logger.warning("⚠️ Fallback a modo básico de edición...")
         payload_basic = {"image": img_b64, "prompt": prompt}
         data_retry = await self._post_request("image/edit", payload_basic)
         if isinstance(data_retry, bytes): return data_retry
