@@ -170,7 +170,7 @@ async def check_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     text_to_check = update.message.reply_to_message.text
-    msg = await update.message.reply_text("🧠 Analizando con Venice AI...")
+    msg = await update.message.reply_text("🧠 Velzar está juzgando...")
 
     try:
         # Acceder al servicio de seguridad (inyectado en main)
