@@ -1,0 +1,12 @@
+
+⚠️ JSON PARSE ERROR ⚠️
+ERROR: Expecting property name enclosed in double quotes: line 1 column 3 (char 2)
+RAW CONTENT:
+Invalid json { risk: high }
+------------------------------
+
+⚠️ JSON PARSE ERROR ⚠️
+ERROR: No valid JSON found or missing keys
+RAW CONTENT:
+Invalid json { risk: high }
+------------------------------
