@@ -75,14 +75,26 @@ async def start_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     # Intentar obtener username cacheado o del bot
     bot_username = context.bot_data.get("username") or context.bot.username
+    if not bot_username:
+        try:
+            me = await context.bot.get_me()
+            bot_username = me.username
+            context.bot_data["username"] = bot_username
+        except:
+            bot_username = "VelzarBot" # Fallback extremo
 
     # Lógica diferenciada: Privado vs Grupo
     if update.effective_chat.type == "private":
+        # Link moderno para añadir como admin con permisos actualizados
+        # restrict_members -> ban_users
+        perms = "change_info+ban_users+delete_messages+invite_users+pin_messages+manage_video_chats+manage_chat"
+        add_url = f"https://t.me/{bot_username}?startgroup&admin={perms}"
+
         keyboard = [
             [InlineKeyboardButton("🎨 GENERAR IMAGEN", callback_data="gen_menu_categorias")],
             [InlineKeyboardButton("📥 EDITAR IMAGEN", callback_data="upload_info")],
             [InlineKeyboardButton("💬 CHAT CON VELZAR", callback_data="toggle_chat_mode")],
-            [InlineKeyboardButton("🛡️ AÑADIR A GRUPO", url=f"https://t.me/{bot_username}?startgroup=true&admin=change_info+restrict_members+delete_messages+invite_users+pin_messages+manage_video_chats")],
+            [InlineKeyboardButton("🛡️ AÑADIR A GRUPO", url=add_url)],
             [InlineKeyboardButton("👤 PERFIL", callback_data="profile_info")]
         ]
         if update.message: await update.message.reply_text(dashboard, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")

@@ -12,7 +12,7 @@ from core.handlers.captcha_handler import verify_callback
 from core.handlers.admin_handler import (
     ban_command, mute_command, unmute_command, purge_command, unlock_command,
     auth_admin_command, unauth_admin_command, kick_command, pin_command,
-    unban_command, banlist_command
+    unban_command, banlist_command, warn_command, info_command, status_command
 )
 
 logging.basicConfig(
@@ -49,6 +49,9 @@ def main():
     app.add_handler(CommandHandler("unlock", unlock_command))
     app.add_handler(CommandHandler("kick", kick_command))
     app.add_handler(CommandHandler("pin", pin_command))
+    app.add_handler(CommandHandler("warn", warn_command))
+    app.add_handler(CommandHandler("info", info_command))
+    app.add_handler(CommandHandler("status", status_command))
 
     # Gestión de Admins
     app.add_handler(CommandHandler("auth", auth_admin_command))
