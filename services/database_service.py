@@ -2,7 +2,7 @@ import aiosqlite
 import logging
 import os
 from datetime import datetime
-from config.settings import DATABASE_URL, ADMIN_USER_ID # <--- AQUI IMPORTAMOS SU ID
+from config.settings import DATABASE_URL, ADMIN_USER_ID
 
 logger = logging.getLogger(__name__)
 
@@ -12,26 +12,13 @@ DB_PATH = DATABASE_URL.replace("sqlite:///", "")
 async def init_db():
     """Inicializa las tablas de usuarios y auditoría"""
     async with aiosqlite.connect(DB_PATH) as db:
-        # Tabla de Usuarios
+        # Tabla de Usuarios (Simplified for security focus)
         await db.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 user_id INTEGER PRIMARY KEY,
                 username TEXT,
-                credits INTEGER DEFAULT 0,
-                free_trial_used BOOLEAN DEFAULT 0,
+                reputation_score INTEGER DEFAULT 100,
                 joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-
-        # Tabla de Auditoría de Imágenes
-        await db.execute("""
-            CREATE TABLE IF NOT EXISTS image_audit (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id INTEGER,
-                action_type TEXT,
-                file_path TEXT,
-                prompt_used TEXT,
-                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
 
@@ -57,7 +44,7 @@ async def init_db():
         """)
 
         await db.commit()
-        logger.info("✅ Base de datos y tablas de auditoría listas.")
+        logger.info("✅ Base de datos de seguridad lista.")
 
 # --- GESTIÓN DE USUARIOS ---
 
@@ -74,62 +61,9 @@ async def get_or_create_user(user_id: int, username: str):
                     (user_id, username)
                 )
                 await db.commit()
-                # Retornamos el nuevo usuario creado
                 async with db.execute("SELECT * FROM users WHERE user_id = ?", (user_id,)) as cursor:
                     user = await cursor.fetchone()
             return user
-
-async def check_credits(user_id: int) -> bool:
-    """Verifica si el usuario puede operar"""
-
-    # --- INMUNIDAD DE ADMINISTRADOR ---
-    if user_id == ADMIN_USER_ID:
-        return True # ¡Pase usted, Amo Rubén!
-    # ----------------------------------
-
-    user = await get_or_create_user(user_id, "unknown")
-    if not user['free_trial_used']:
-        return True # Tiene prueba gratis
-    if user['credits'] > 0:
-        return True # Tiene créditos pagados
-    return False
-
-async def consume_credit(user_id: int):
-    """Consume 1 uso (EXCEPTO SI ES EL ADMINISTRADOR)"""
-
-    # --- INMUNIDAD DE ADMINISTRADOR ---
-    if user_id == ADMIN_USER_ID:
-        logger.info(f"👑 Admin {user_id} generando sin costo.")
-        return # No descontamos nada
-    # ----------------------------------
-
-    user = await get_or_create_user(user_id, "unknown")
-
-    async with aiosqlite.connect(DB_PATH) as db:
-        if not user['free_trial_used']:
-            await db.execute("UPDATE users SET free_trial_used = 1 WHERE user_id = ?", (user_id,))
-            logger.info(f"Usuario {user_id} usó su prueba gratuita.")
-        elif user['credits'] > 0:
-            await db.execute("UPDATE users SET credits = credits - 1 WHERE user_id = ?", (user_id,))
-            logger.info(f"Usuario {user_id} consumió 1 crédito.")
-        await db.commit()
-
-async def add_credits(user_id: int, amount: int):
-    """Añade créditos comprados con Estrellas"""
-    async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute("UPDATE users SET credits = credits + ? WHERE user_id = ?", (amount, user_id))
-        await db.commit()
-
-# --- AUDITORÍA DE SEGURIDAD ---
-
-async def log_image_audit(user_id: int, action_type: str, file_path: str, prompt: str = ""):
-    """Registra la evidencia de una imagen en la base de datos"""
-    async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute(
-            "INSERT INTO image_audit (user_id, action_type, file_path, prompt_used) VALUES (?, ?, ?, ?)",
-            (user_id, action_type, file_path, prompt)
-        )
-        await db.commit()
 
 # --- SISTEMA DE BANEOS (Velzar Log) ---
 
