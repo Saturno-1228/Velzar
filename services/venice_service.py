@@ -51,8 +51,16 @@ class VeniceService:
 
     def _log_json_error(self, content, error):
         """Registra errores de JSON crudos en archivo y consola."""
-        msg = f"\n⚠️ JSON PARSE ERROR ⚠️\nERROR: {error}\nRAW CONTENT:\n{content}\n{'-'*30}\n"
-        logger.error(msg)
+        content_safe = content if content and content.strip() else "[EMPTY RESPONSE]"
+        msg = f"\n⚠️ JSON PARSE ERROR ⚠️\nERROR: {error}\nRAW CONTENT:\n{content_safe}\n{'-'*30}\n"
+
+        # Loggear a consola asegurando que no rompa por encoding (aunque main.py ya maneja esto)
+        try:
+            logger.error(msg)
+        except UnicodeEncodeError:
+            # Fallback agresivo si el fix de stdout falla
+            logger.error(msg.encode('ascii', 'replace').decode('ascii'))
+
         try:
             with open("venice_errors.log", "a", encoding="utf-8") as f:
                 f.write(msg)
@@ -96,6 +104,11 @@ class VeniceService:
 
         if isinstance(data, dict) and "choices" in data:
             content = data["choices"][0]["message"]["content"]
+
+            # Verificar contenido vacío antes de intentar parsear
+            if not content or not content.strip():
+                self._log_json_error(content, "Empty content from AI (likely stripped thinking)")
+                return {"risk": "LOW", "category": "ERROR", "reason": "Empty AI Response"}
 
             try:
                 # Regex robusta para capturar el primer JSON válido

@@ -10,3 +10,9 @@ ERROR: No valid JSON found or missing keys
 RAW CONTENT:
 Invalid json { risk: high }
 ------------------------------
+
+⚠️ JSON PARSE ERROR ⚠️
+ERROR: Empty content from AI (likely stripped thinking)
+RAW CONTENT:
+[EMPTY RESPONSE]
+------------------------------

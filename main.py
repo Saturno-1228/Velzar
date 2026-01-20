@@ -21,11 +21,24 @@ from core.handlers.help_handler import help_command, help_callback_handler
 from core.handlers.chat_handler import chat_reply_handler
 
 # Configuración de Logging
+# Forzar UTF-8 en consola para Windows (evita UnicodeEncodeError con emojis)
+if sys.stdout.encoding.lower() != 'utf-8':
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
+
+if sys.stderr.encoding.lower() != 'utf-8':
+    try:
+        sys.stderr.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
+
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO if LOG_LEVEL == "INFO" else logging.DEBUG,
     handlers=[
-        logging.FileHandler("velzar_bot.log"),
+        logging.FileHandler("velzar_bot.log", encoding='utf-8'),
         logging.StreamHandler(sys.stdout)
     ]
 )
