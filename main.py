@@ -17,6 +17,7 @@ from core.handlers.admin_handler import (
 )
 from core.handlers.guide_handler import guide_callback_handler
 from core.handlers.help_handler import help_command, help_callback_handler
+from core.handlers.chat_handler import chat_reply_handler
 
 # Configuración de Logging
 logging.basicConfig(
@@ -119,6 +120,10 @@ def main():
 
     # 3. Bienvenidas (Eventos de Chat)
     app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, welcome_new_member))
+
+    # 4. Chat Conversacional (Velzar Guardián)
+    # Atrapa texto que no sea comando (Menciones y DMs se filtran dentro del handler)
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, chat_reply_handler))
 
     logger.info("🚀 Velzar Security Bot (Versión Comercial) Operativo.")
     app.run_polling()

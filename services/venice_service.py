@@ -65,7 +65,12 @@ class VeniceService:
             "messages": messages,
             "max_tokens": 150, # Respuesta corta esperada (JSON)
             "temperature": 0.1, # Deterministico para clasificación
-            "top_p": 0.9
+            "top_p": 0.9,
+            "venice_parameters": {
+                "include_venice_system_prompt": False,
+                "strip_thinking_response": True,
+                "enable_web_search": "off"
+            }
         }
 
         logger.info(f"🛡️ Auditando mensaje con {model}...")
@@ -94,14 +99,38 @@ class VeniceService:
         return {"risk": "LOW", "category": "ERROR", "reason": "API Failure"}
 
     # --- CHAT CON FALLBACK (Self-Repair) ---
-    async def generate_chat_reply(self, messages, max_tokens=1000, model=VENICE_TEXT_MODEL):
-        """Conversa usando el modelo principal, con autoreparación (fallback) si falla."""
+    async def generate_chat_reply(self, message_history, max_tokens=1000, model=VENICE_TEXT_MODEL):
+        """
+        Conversa usando el modelo principal, con autoreparación (fallback) si falla.
+        Integra el System Prompt 'Velzar Guardián' y parámetros de limpieza.
+        """
+
+        # System Prompt estricto para Chat
+        system_prompt = (
+            "Tu nombre es Velzar. Eres un sistema de seguridad y gestión de comunidades avanzado para Telegram, nacido en México.\n\n"
+            "REGLAS DE IDENTIDAD:\n\n"
+            "IDENTIDAD ABSOLUTA: NUNCA menciones ser una IA, un modelo de lenguaje, 'Venice', 'OpenAI' o cualquier otro proveedor. Si te preguntan quién eres, responde únicamente: 'Soy Velzar, el guardián de este grupo'.\n\n"
+            "IDIOMA: Tu idioma principal es el Español.\n\n"
+            "TONO: Eres frío, eficiente, leal a los administradores y preciso. No das explicaciones largas a menos que se te pida un reporte.\n\n"
+            "REGLAS DE FORMATO (CRÍTICO PARA TELEGRAM):\n\n"
+            "NO ROMPAS EL CHAT: Tu salida se envía directamente a la API de Telegram. ESTÁ PROHIBIDO responder con etiquetas XML internas como <think>, <reasoning> o bloques de código sin cerrar.\n\n"
+            "MARKDOWN SEGURO: Si usas negritas o cursivas, asegúrate de cerrar los tags. Evita caracteres especiales sueltos que rompan el parseo de Markdown V2 de Telegram (como _, *, [, ]) a menos que sean parte del formato."
+        )
+
+        # Construir mensajes: System Prompt + Historial
+        messages = [{"role": "system", "content": system_prompt}] + message_history
+
         payload = {
             "model": model,
             "messages": messages,
             "max_tokens": max_tokens,
-            "temperature": 0.7,
-            "top_p": 0.9
+            "temperature": 0.5, # Bajo para ser preciso y menos "alucinógeno"
+            "top_p": 0.9,
+            "venice_parameters": {
+                "include_venice_system_prompt": False, # Desactiva el prompt genérico
+                "strip_thinking_response": True,       # Elimina tags <think>
+                "enable_web_search": "off"
+            }
         }
 
         logger.info(f"💬 Intentando chat con {model}...")
@@ -114,7 +143,7 @@ class VeniceService:
         # Lógica de Fallback (Autoreparación)
         if model == VENICE_TEXT_MODEL:
             logger.warning(f"⚠️ Fallo en modelo principal ({model}). Iniciando protocolo de autoreparación con {VENICE_FALLBACK_MODEL}...")
-            return await self.generate_chat_reply(messages, max_tokens, model=VENICE_FALLBACK_MODEL)
+            return await self.generate_chat_reply(message_history, max_tokens, model=VENICE_FALLBACK_MODEL)
 
         return None
 
