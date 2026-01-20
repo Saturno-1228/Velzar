@@ -18,33 +18,51 @@ class VeniceService:
             "Content-Type": "application/json"
         }
 
-    async def _post_request(self, endpoint, payload):
-        """Envía una petición POST a la API de Venice."""
+    async def _post_request(self, endpoint, payload, retries=1):
+        """Envía una petición POST a la API de Venice con reintento automático en 429."""
         url = f"{VENICE_API_BASE}/{endpoint}"
         timeout = aiohttp.ClientTimeout(total=300)
 
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            try:
-                async with session.post(url, json=payload, headers=self.headers) as response:
-                    if response.status == 200:
-                        content_type = response.headers.get("Content-Type", "")
-                        if "application/json" in content_type:
-                            return await response.json()
-                        else:
-                            return await response.read()
-                    else:
+        for attempt in range(retries + 1):
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                try:
+                    async with session.post(url, json=payload, headers=self.headers) as response:
+                        if response.status == 200:
+                            content_type = response.headers.get("Content-Type", "")
+                            if "application/json" in content_type:
+                                return await response.json()
+                            else:
+                                return await response.read()
+
+                        # Manejo de Rate Limit (429)
+                        if response.status == 429 and attempt < retries:
+                            retry_after = int(response.headers.get("x-ratelimit-reset-requests", 5))
+                            logger.warning(f"⚠️ 429 Rate Limit. Esperando {retry_after}s para reintentar...")
+                            await asyncio.sleep(retry_after)
+                            continue
+
                         error_text = await response.text()
                         logger.error(f"Error Venice {response.status}: {error_text}")
                         return {"error": response.status, "details": error_text}
-            except Exception as e:
-                logger.error(f"Excepción: {e}")
-                return None
+                except Exception as e:
+                    logger.error(f"Excepción: {e}")
+                    return None
+        return None
+
+    def _log_json_error(self, content, error):
+        """Registra errores de JSON crudos en archivo y consola."""
+        msg = f"\n⚠️ JSON PARSE ERROR ⚠️\nERROR: {error}\nRAW CONTENT:\n{content}\n{'-'*30}\n"
+        logger.error(msg)
+        try:
+            with open("venice_errors.log", "a", encoding="utf-8") as f:
+                f.write(msg)
+        except Exception as e:
+            logger.error(f"No se pudo escribir en venice_errors.log: {e}")
 
     # --- CLASIFICACIÓN DE SEGURIDAD (Layer 4) ---
     async def classify_message(self, text, model=VENICE_TEXT_MODEL):
         """
         Clasifica un mensaje usando la IA para detectar SPAM, ATAQUES o contenido SEGURO.
-        Retorna un diccionario: {"risk": "HIGH/MED/LOW", "category": "SPAM/ATTACK/SAFE", "reason": "..."}
         """
         system_prompt = (
             "Eres Velzar, una IA de seguridad avanzada. Tu única función es auditar mensajes en busca de contenido inseguro, ilegal, spam o malicioso. "
@@ -63,8 +81,8 @@ class VeniceService:
         payload = {
             "model": model,
             "messages": messages,
-            "max_tokens": 150, # Respuesta corta esperada (JSON)
-            "temperature": 0.1, # Deterministico para clasificación
+            "max_tokens": 150,
+            "temperature": 0.1,
             "top_p": 0.9,
             "venice_parameters": {
                 "include_venice_system_prompt": False,
@@ -79,33 +97,29 @@ class VeniceService:
         if isinstance(data, dict) and "choices" in data:
             content = data["choices"][0]["message"]["content"]
 
-            # Extracción robusta de JSON usando Regex
             try:
-                # Busca el primer objeto JSON {...}
+                # Regex robusta para capturar el primer JSON válido
                 match = re.search(r"\{.*\}", content, re.DOTALL)
                 if match:
                     json_str = match.group(0)
                     result = json.loads(json_str)
 
-                    # Normalizar claves si es necesario (manejo básico de errores de IA)
                     if "risk" in result:
                         return result
-            except (json.JSONDecodeError, AttributeError):
-                logger.error(f"⚠️ Error al parsear JSON de clasificación: {content}")
 
-            # Fallback si el regex falla pero hay contenido
-            return {"risk": "LOW", "category": "ERROR", "reason": f"JSON Parse Error. Raw: {content[:50]}..."}
+            except (json.JSONDecodeError, AttributeError) as e:
+                self._log_json_error(content, e)
+
+            # Fallback y logging si no se pudo extraer
+            self._log_json_error(content, "No valid JSON found or missing keys")
+            return {"risk": "LOW", "category": "ERROR", "reason": "JSON Parse Error"}
 
         return {"risk": "LOW", "category": "ERROR", "reason": "API Failure"}
 
     # --- CHAT CON FALLBACK (Self-Repair) ---
     async def generate_chat_reply(self, message_history, max_tokens=1000, model=VENICE_TEXT_MODEL):
-        """
-        Conversa usando el modelo principal, con autoreparación (fallback) si falla.
-        Integra el System Prompt 'Velzar Guardián' y parámetros de limpieza.
-        """
+        """Conversa usando el modelo principal, con autoreparación si falla."""
 
-        # System Prompt estricto para Chat
         system_prompt = (
             "Tu nombre es Velzar. Eres un sistema de seguridad y gestión de comunidades avanzado para Telegram, nacido en México.\n\n"
             "REGLAS DE IDENTIDAD:\n\n"
@@ -117,18 +131,17 @@ class VeniceService:
             "MARKDOWN SEGURO: Si usas negritas o cursivas, asegúrate de cerrar los tags. Evita caracteres especiales sueltos que rompan el parseo de Markdown V2 de Telegram (como _, *, [, ]) a menos que sean parte del formato."
         )
 
-        # Construir mensajes: System Prompt + Historial
         messages = [{"role": "system", "content": system_prompt}] + message_history
 
         payload = {
             "model": model,
             "messages": messages,
             "max_tokens": max_tokens,
-            "temperature": 0.5, # Bajo para ser preciso y menos "alucinógeno"
+            "temperature": 0.5,
             "top_p": 0.9,
             "venice_parameters": {
-                "include_venice_system_prompt": False, # Desactiva el prompt genérico
-                "strip_thinking_response": True,       # Elimina tags <think>
+                "include_venice_system_prompt": False,
+                "strip_thinking_response": True,
                 "enable_web_search": "off"
             }
         }
@@ -136,11 +149,9 @@ class VeniceService:
         logger.info(f"💬 Intentando chat con {model}...")
         data = await self._post_request("chat/completions", payload)
 
-        # Validación de éxito
         if isinstance(data, dict) and "choices" in data:
             return data["choices"][0]["message"]["content"]
 
-        # Lógica de Fallback (Autoreparación)
         if model == VENICE_TEXT_MODEL:
             logger.warning(f"⚠️ Fallo en modelo principal ({model}). Iniciando protocolo de autoreparación con {VENICE_FALLBACK_MODEL}...")
             return await self.generate_chat_reply(message_history, max_tokens, model=VENICE_FALLBACK_MODEL)

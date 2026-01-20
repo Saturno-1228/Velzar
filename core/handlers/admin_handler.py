@@ -29,7 +29,6 @@ async def _check_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bo
     user = update.effective_user
     chat = update.effective_chat
 
-    # Dueño supremo
     if user.id == int(ADMIN_USER_ID):
         return True
 
@@ -42,7 +41,6 @@ async def _check_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bo
 # --- COMANDOS PUNITIVOS ---
 
 async def ban_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Banea a un usuario manualmente."""
     if not await _check_admin(update, context):
         return
 
@@ -54,13 +52,12 @@ async def ban_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         await update.effective_chat.ban_member(target.id)
         await update.message.reply_text(f"🔨 **Banned:** {target.mention_html()}", parse_mode="HTML")
-        # Log (bot_id=0 para acciones manuales o id del admin)
         await add_ban_log(target.id, update.effective_chat.id, "Manual Ban", update.effective_user.id)
     except Exception as e:
-        await update.message.reply_text(f"❌ Error: {e}")
+        logger.error(f"Error banning user: {e}")
+        await update.message.reply_text("❌ No se pudo banear al usuario.")
 
 async def mute_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Silencia a un usuario manualmente."""
     if not await _check_admin(update, context):
         return
 
@@ -75,10 +72,10 @@ async def mute_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"🤐 **Muted:** {target.mention_html()}", parse_mode="HTML")
         await add_ban_log(target.id, update.effective_chat.id, "Manual Mute", update.effective_user.id)
     except Exception as e:
-        await update.message.reply_text(f"❌ Error: {e}")
+        logger.error(f"Error muting user: {e}")
+        await update.message.reply_text("❌ No se pudo mutear al usuario.")
 
 async def purge_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Borra mensajes masivamente."""
     if not await _check_admin(update, context):
         return
 
@@ -86,15 +83,8 @@ async def purge_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         count = int(context.args[0]) if context.args else 10
         message_id = update.message.message_id
 
-        # Generar lista de IDs a borrar (hacia atrás)
-        # Nota: delete_messages es más eficiente si se tiene la lista, pero message_ids son secuenciales aprox.
-        # Telegram API permite borrar lista. Haremos un loop simple o delete_message en batch si soportado (python-telegram-bot v20+ tiene delete_messages)
-
-        # Estrategia simple: borrar el comando y N anteriores
         await update.message.delete()
 
-        # Esto es aproximado, lo ideal es borrar por reply hasta el final
-        # Pero para purge simple:
         deleted_count = 0
         current_id = message_id - 1
         for _ in range(count):
@@ -102,7 +92,7 @@ async def purge_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await context.bot.delete_message(update.effective_chat.id, current_id)
                 deleted_count += 1
             except Exception:
-                pass # Mensaje no existe o no se puede borrar
+                pass
             current_id -= 1
 
         msg = await context.bot.send_message(update.effective_chat.id, f"🗑️ Se barrieron {deleted_count} mensajes.")
@@ -110,22 +100,14 @@ async def purge_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await msg.delete()
 
     except Exception as e:
-        await context.bot.send_message(update.effective_chat.id, f"❌ Error en purge: {e}")
+        logger.error(f"Error purging messages: {e}")
+        await context.bot.send_message(update.effective_chat.id, "❌ Error al purgar mensajes.")
 
 # --- COMANDOS DE CONFIGURACIÓN ---
 
 async def setlog_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Configura el canal de logs."""
     if not await _check_admin(update, context):
         return
-
-    # Si se ejecuta en un canal, usar ese ID
-    if update.effective_chat.type == "channel":
-        channel_id = update.effective_chat.id
-        # Necesitamos el ID del grupo asociado o pasar el ID del canal en el grupo
-        # Este comando es tricky. Mejor: "/setlog <channel_id>" en el grupo, o "/setlog" en el grupo y pasar el ID.
-        # Vamos a asumir uso en grupo pasando ID
-        pass
 
     if not context.args:
         await update.message.reply_text("Uso: /setlog <channel_id> (Ej: -100123456789)")
@@ -135,7 +117,6 @@ async def setlog_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         log_channel_id = int(context.args[0])
         await update_chat_log_channel(update.effective_chat.id, log_channel_id)
 
-        # Enviar mensaje de prueba al canal
         try:
             await context.bot.send_message(log_channel_id, "✅ Velzar Logs conectados correctamente.")
             await update.message.reply_text("✅ Canal de logs configurado.")
@@ -146,7 +127,6 @@ async def setlog_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("ID inválido.")
 
 async def setwelcome_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Configura el mensaje de bienvenida."""
     if not await _check_admin(update, context):
         return
 
@@ -161,7 +141,6 @@ async def setwelcome_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
 # --- COMANDOS DE AUDITORÍA ---
 
 async def check_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Auditoría manual por IA."""
     if not await _check_admin(update, context):
         return
 
@@ -173,7 +152,6 @@ async def check_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = await update.message.reply_text("🧠 Velzar está juzgando...")
 
     try:
-        # Acceder al servicio de seguridad (inyectado en main)
         security_service = context.bot_data.get("security")
         if not security_service:
             await msg.edit_text("❌ Error interno: Servicio de seguridad no disponible.")
@@ -196,4 +174,5 @@ async def check_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await msg.edit_text(report, parse_mode="Markdown")
 
     except Exception as e:
-        await msg.edit_text(f"❌ Error durante el análisis: {e}")
+        logger.error(f"Error during manual check: {e}")
+        await msg.edit_text("❌ Ocurrió un error al procesar la solicitud.")

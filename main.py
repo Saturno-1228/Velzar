@@ -1,4 +1,5 @@
 import logging
+import sys
 from telegram import (
     Update, BotCommand, BotCommandScopeAllPrivateChats,
     BotCommandScopeAllChatAdministrators
@@ -22,7 +23,11 @@ from core.handlers.chat_handler import chat_reply_handler
 # Configuración de Logging
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO if LOG_LEVEL == "INFO" else logging.DEBUG
+    level=logging.INFO if LOG_LEVEL == "INFO" else logging.DEBUG,
+    handlers=[
+        logging.FileHandler("velzar_bot.log"),
+        logging.StreamHandler(sys.stdout)
+    ]
 )
 logger = logging.getLogger(__name__)
 
