@@ -1,7 +1,7 @@
 import logging
 from telegram import (
     Update, BotCommand, BotCommandScopeAllPrivateChats,
-    BotCommandScopeChatAdministrators
+    BotCommandScopeAllChatAdministrators
 )
 from telegram.ext import (
     ApplicationBuilder, Application, CommandHandler,
@@ -82,7 +82,7 @@ async def post_init(application: Application):
         BotCommand("setwelcome", "Configurar bienvenida"),
         BotCommand("info", "Ver info de usuario"),
     ]
-    await application.bot.set_my_commands(commands_admin, scope=BotCommandScopeChatAdministrators())
+    await application.bot.set_my_commands(commands_admin, scope=BotCommandScopeAllChatAdministrators())
     logger.info("📱 Menús nativos actualizados.")
 
 def main():
