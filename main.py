@@ -1,5 +1,8 @@
 import logging
-from telegram import Update
+from telegram import (
+    Update, BotCommand, BotCommandScopeAllPrivateChats,
+    BotCommandScopeChatAdministrators
+)
 from telegram.ext import (
     ApplicationBuilder, Application, CommandHandler,
     CallbackQueryHandler, MessageHandler, filters, ContextTypes, ApplicationHandlerStop
@@ -12,6 +15,8 @@ from core.handlers.admin_handler import (
     ban_command, mute_command, purge_command,
     setlog_command, setwelcome_command, check_command
 )
+from core.handlers.guide_handler import guide_callback_handler
+from core.handlers.help_handler import help_command, help_callback_handler
 
 # Configuración de Logging
 logging.basicConfig(
@@ -56,6 +61,30 @@ async def post_init(application: Application):
     application.bot_data["username"] = me.username
     logger.info(f"✅ Identidad confirmada: @{me.username}")
 
+    # 4. Registrar Comandos Nativos (UX)
+    # Scope: Usuarios (Privado)
+    commands_private = [
+        BotCommand("start", "Iniciar sistema"),
+        BotCommand("help", "Ver menú de ayuda"),
+    ]
+    await application.bot.set_my_commands(commands_private, scope=BotCommandScopeAllPrivateChats())
+
+    # Scope: Administradores (Grupos)
+    commands_admin = [
+        BotCommand("ban", "Banear usuario (Responder)"),
+        BotCommand("mute", "Silenciar usuario (Responder)"),
+        BotCommand("warn", "Advertir usuario"),
+        BotCommand("unban", "Desbanear (ID o Respuesta)"),
+        BotCommand("unmute", "Quitar silencio"),
+        BotCommand("check", "Auditoría IA Manual"),
+        BotCommand("purge", "Borrar mensajes (Ej: /purge 10)"),
+        BotCommand("setlog", "Vincular canal de reportes"),
+        BotCommand("setwelcome", "Configurar bienvenida"),
+        BotCommand("info", "Ver info de usuario"),
+    ]
+    await application.bot.set_my_commands(commands_admin, scope=BotCommandScopeChatAdministrators())
+    logger.info("📱 Menús nativos actualizados.")
+
 def main():
     if not BOT_TOKEN:
         logger.error("❌ BOT_TOKEN no encontrado en variables de entorno.")
@@ -73,6 +102,11 @@ def main():
 
     # 1. Menús y UI
     app.add_handler(CommandHandler("start", start_menu))
+    app.add_handler(CommandHandler("help", help_command))
+
+    # Handlers específicos (pattern) ANTES del genérico
+    app.add_handler(CallbackQueryHandler(guide_callback_handler, pattern="^guide_"))
+    app.add_handler(CallbackQueryHandler(help_callback_handler, pattern="^help_"))
     app.add_handler(CallbackQueryHandler(menu_callback_handler))
 
     # 2. Administración y Configuración

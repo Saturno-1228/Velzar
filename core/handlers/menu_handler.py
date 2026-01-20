@@ -54,18 +54,7 @@ async def menu_callback_handler(update: Update, context: ContextTypes.DEFAULT_TY
     data = query.data
     user = query.from_user
 
-    if data == "guide_main":
-        text = (
-            "📚 **Protocolo de Instalación**\n\n"
-            "1. **Hazme Admin:** Añádeme a tu grupo y promúveme con permisos de banear y borrar mensajes.\n"
-            "2. **Configura:** Usa `/setlog` para definir dónde enviaré los reportes.\n"
-            "3. **Disfruta:** Me activaré automáticamente y protegeré el perímetro.\n\n"
-            "Si un usuario es sospechoso, usaré mi IA para juzgarlo."
-        )
-        keyboard = [[InlineKeyboardButton("🔙 Atrás", callback_data="back_home")]]
-        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
-
-    elif data == "my_tools":
+    if data == "my_tools":
         # Obtener datos frescos
         db_user = await get_or_create_user(user.id, user.username)
         trust_score = db_user["trust_score"]
